@@ -1,55 +1,32 @@
 #include <iostream>
-#include <cstring>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
+#include <winsock2.h>
 
-#define PORT 8080
+#pragma comment(lib, "ws2_32.lib")
+
+#define PORT 8888
+#define SERVER_IP "127.0.0.1"
 
 int main() {
-    int sock = 0;
-    struct sockaddr_in serv_addr;
+    WSADATA wsaData;
+    WSAStartup(MAKEWORD(2, 2), &wsaData);
 
-    // Создание сокета
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        std::cerr << "Socket creation error\n";
-        return -1;
-    }
+    SOCKET clientSocket = socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in serverAddr;
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(PORT);
+    serverAddr.sin_addr.s_addr = inet_addr(SERVER_IP);
 
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(PORT);
+    connect(clientSocket, (sockaddr*)&serverAddr, sizeof(serverAddr));
 
-    // Преобразование адреса IPv4 из текста в бинарный формат
-    if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0) {
-        std::cerr << "Invalid address/ Address not supported\n";
-        return -1;
-    }
+    // Пример регистрации
+    std::string registerRequest = "REGISTER user1 password1";
+    send(clientSocket, registerRequest.c_str(), registerRequest.length(), 0);
 
-    // Подключение к серверу
-    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-        std::cerr << "Connection failed\n";
-        return -1;
-    }
-    std::cout << "Подключено к серверу.\n";
+    char buffer[1024];
+    recv(clientSocket, buffer, 1024, 0);
+    std::cout << "Ответ сервера: " << buffer << std::endl;
 
-    char buffer[1024] = {0};
-    while (true) {
-        // Отправка сообщения серверу
-        std::string client_message;
-        std::cout << "Вы: ";
-        std::getline(std::cin, client_message);
-        send(sock, client_message.c_str(), client_message.size(), 0);
-
-        // Прием сообщения от сервера
-        memset(buffer, 0, sizeof(buffer));
-        int valread = read(sock, buffer, sizeof(buffer));
-        if (valread <= 0) {
-            std::cout << "Сервер отключился.\n";
-            break;
-        }
-        std::cout << "Сервер: " << buffer << "\n";
-    }
-
-    close(sock);
+    closesocket(clientSocket);
+    WSACleanup();
     return 0;
 }
