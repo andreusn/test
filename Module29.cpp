@@ -1,52 +1,99 @@
-void insertIntoMiddle(int value, int pos) {
-    //создаем новый узел
-    Node* newNode = new Node;
-    newNode->value = value;
-    newNode->next = nullptr;
-    newNode->node_mutex = new std::mutex;
+#include <iostream>
+#include <mutex>
+#include <thread>
+#include <array>
 
-    Node* prev = nullptr;
-    Node* curr = nullptr;
-    
-    //блокаем всю очередь на время поиска начальной позиции
-    queue_mutex->lock();
-    
-    try {
-        prev = head;
-        prev->node_mutex->lock();
-        curr = prev->next;
-        if (curr) curr->node_mutex->lock();
+struct Node
+{
+    int value;
+    Node* next;
+    std::mutex node_mutex;
+};
+
+class FineGrainedQueue
+{
+public:
+    Node* head;
+    std::mutex queue_mutex;
+
+    FineGrainedQueue() : head(nullptr) {}
+
+    void insertIntoMiddle(int value, int pos)
+    {
+        Node* newNode = new Node{value, nullptr, {}};
         
-        queue_mutex->unlock(); //разблокируем очередь работаем только с узлами
+        queue_mutex.lock();
+        Node* current = head;
+        queue_mutex.unlock();
         
-        int counter = 1; //позиции считаем с 1 (head - позиция 0)
-        
-        
-        while (curr && counter < pos) {
-            // Перемещаем блокировки
-            Node* oldPrev = prev;
-            prev = curr;
-            curr = curr->next;
-            
-            oldPrev->node_mutex->unlock();
-            if (curr) curr->node_mutex->lock();
-            
-            counter++;
+        if (!current) {
+            queue_mutex.lock();
+            head = newNode;
+            queue_mutex.unlock();
+            return;
         }
         
-        //вставляем узел
-        newNode->next = curr;
-        prev->next = newNode;
+        int currentPos = 0;
+        Node* prev = nullptr;
         
-        // разблокируем оставшиеся узлы
-        prev->node_mutex->unlock();
-        if (curr) curr->node_mutex->unlock();
+        while (current && currentPos < pos) {
+            prev = current;
+            current = current->next;
+            currentPos++;
+            
+            if (!current) break;
+        }
+        
+        if (prev) {
+            std::unique_lock<std::mutex> prevLock(prev->node_mutex);
+            std::unique_lock<std::mutex> currentLock;
+            if (current) {
+                currentLock = std::unique_lock<std::mutex>(current->node_mutex);
+            }
+            
+            newNode->next = current;
+            prev->next = newNode;
+        }
     }
-    catch (...) {
-        //в случае исключения обязательно освобождаем все блокировки
-        queue_mutex->unlock();
-        if (prev && prev->node_mutex) prev->node_mutex->unlock();
-        if (curr && curr->node_mutex) curr->node_mutex->unlock();
-        throw;
+
+    void print()
+    {
+        std::unique_lock<std::mutex> lock(queue_mutex);
+        Node* current = head;
+        while (current) {
+            std::cout << current->value << " ";
+            current = current->next;
+        }
+        std::cout << std::endl;
     }
+};
+
+int main([[maybe_unused]] int argc, [[maybe_unused]] const char** argv)
+{
+    FineGrainedQueue queue;
+
+    const int max_elems = 10;
+    for (size_t i = 0; i < max_elems; ++i)
+    {
+        queue.insertIntoMiddle(i, i); 
+    }
+
+    const int num_threads = 5;
+    std::array<std::thread, num_threads> threads;
+
+    for (size_t i = 0; i < threads.size(); ++i)
+    {
+        threads[i] = std::thread([&queue, i]() { queue.insertIntoMiddle((i + 1) * 100, 5); });
+    }
+
+    for (auto& t : threads)
+    {
+        if (t.joinable())
+        {
+            t.join();
+        }
+    }
+
+    queue.print();
+    return 0;
 }
