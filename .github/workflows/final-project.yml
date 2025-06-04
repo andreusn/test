@@ -10,9 +10,9 @@ jobs:
           fetch-depth: 0
       - name: Create and push empty branch
         run: |
-          git checkout --orphan empty-branch
+          git checkout --orphan exam
           git rm -rf .
           echo "# Empty branch" > README.md
           git add README.md
-          git commit -m "Initial commit (empty branch)"
-          git push origin empty-branch
+          git commit -m "Initial commit (exam)"
+          git push origin exam
